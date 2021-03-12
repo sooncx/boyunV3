@@ -1,0 +1,253 @@
+<template>
+  <basic-template
+    :tableColumns="tableColumns"
+    :tableData="tableData"
+    :total="total"
+    :loading="loading"
+    @size-change="pageSizeChange"
+    @current-change="currentChange"
+  >
+    <template #filter>
+      <div class="filter__date">
+        <span class="filter__title">选择时间</span>
+        <SelectDate
+          v-model:value="rangeDate"
+          dateType="date"
+          @complete="debounceOnSearch(true)"
+        />
+      </div>
+      <div class="filter__vehgroup">
+        <span class="filter__title">车辆车组</span>
+        <VehGroupSelect v-model:value="VehGroup" />
+
+        <div class="filter__btnBox">
+          <a-button
+            :loading="loading"
+            type="primary"
+            @click="debounceOnSearch(true)"
+            class="filter__searchbtn"
+            >搜索</a-button
+          >
+          <div>
+            <ColumnSelect v-model:value="tableColumns" />
+            <div class="filter__export" @click="debounceOnExpoert">
+              <i class="iconfont icon-daochu1"></i>
+            </div>
+          </div>
+        </div>
+      </div>
+    </template>
+
+    <template #index="{ $index }">
+      {{ (current - 1) * pageSize + ($index + 1) }}
+    </template>
+    <template #isFirst="{ row }">
+      {{ row.type === 1 ? "首保" : "非首保" }}
+    </template>
+  </basic-template>
+</template>
+<script lang="ts">
+import { defineComponent, ref, reactive, toRefs, defineAsyncComponent } from "vue";
+import { BasicTemplate, SelectDate } from "../../module";
+import API from "@/api/dataReport/";
+import dayJs from "dayjs";
+import APIType from "@/api/dataReport/type";
+import VehGroupType from "@/components/VehGroup/src/type";
+import { useDebounce } from "@/hooks/core/useDebounce";
+import { useMessage } from "@/hooks/web/useMessage";
+
+export default defineComponent({
+  name: "insuranceReport",
+  components: {
+    BasicTemplate,
+    SelectDate,
+    VehGroupSelect: defineAsyncComponent(
+      () => import("@/components/VehGroup/src/VehGroupSelect.vue")
+    ),
+    ColumnSelect: defineAsyncComponent(() => import('../../module/src/ColumnSelect.vue')),
+  },
+  setup() {
+    const loading = ref(false);
+    const message = useMessage();
+    const rangeDate = ref([
+      dayJs(new Date().getTime() - 3600 * 1000 * 24 * 2).format(
+        "YYYY-MM-DD 00:00:00"
+      ),
+      dayJs(new Date()).format("YYYY-MM-DD 23:59:59"),
+    ]);
+
+    const VehGroup = ref(<VehGroupType | null>null);
+
+    const onSearch = async (tips?: boolean) => {
+      if (!VehGroup.value) {
+        message.error("请选择车辆车组");
+        return;
+      }
+
+      const info = {
+        id: VehGroup.value.vehicleId || VehGroup.value.groupId,
+        type: VehGroup.value.flag,
+        pageNumber: pagination.current,
+        pageSize: pagination.pageSize,
+        startTime: rangeDate.value[0],
+        endTime: rangeDate.value[1],
+      };
+
+      loading.value = true;
+      try {
+        const { flag, obj, msg } = await API.pageInsuranceReport(info);
+
+        if (flag === 1) {
+          tips && message.success(msg);
+          tableData.value = obj.data;
+          pagination.total = obj.total;
+        } else {
+          message.error(msg);
+        }
+        loading.value = false;
+      } catch (error) {
+        loading.value = false;
+        message.error(error.msg ? error.msg : error);
+      }
+    };
+    const [debounceOnSearch] = useDebounce(onSearch, 200);
+
+    const tableData = ref(<APIType.pageInsuranceReportRes["obj"]["data"]>[]);
+    const tableColumns = ref([
+      {
+        title: "序号",
+        align: "center",
+        key: "index",
+        width: 60,
+        slots: { customRender: "index" },
+        visible: true
+      },
+      {
+        title: "车牌号",
+        align: "center",
+        key: "plate",
+        visible: true
+      },
+      {
+        title: "客户姓名",
+        align: "center",
+        key: "owner",
+        visible: true
+      },
+      {
+        title: "客户电话",
+        align: "center",
+        key: "phone",
+        visible: true
+      },
+      {
+        title: "是否首保",
+        align: "center",
+        key: "type",
+        slots: { customRender: "isFirst" },
+        visible: true
+      },
+      {
+        title: "总金额",
+        align: "center",
+        key: "amountMoney",
+        visible: true
+      },
+      {
+        title: "保险公司",
+        align: "center",
+        key: "insuranceCompany",
+        visible: true
+      },
+      {
+        title: "险种明细",
+        align: "center",
+        key: "insuranceType",
+        visible: true
+      },
+      {
+        title: "提前多少天提醒",
+        align: "center",
+        key: "leadTime",
+        visible: true
+      },
+      {
+        title: "登记日期",
+        align: "center",
+        key: "loginTime",
+        visible: true
+      },
+      {
+        title: "下一次续保的时间",
+        align: "center",
+        key: "nestTimeInsuranceTime",
+        visible: true
+      },
+      {
+        title: "提示内容",
+        align: "center",
+        key: "tips",
+        visible: true
+      },
+      {
+        title: "备注",
+        align: "center",
+        key: "remark",
+        visible: true
+      },
+    ]);
+
+    const onExport = () => {
+      if (!VehGroup.value) {
+        message.error("请选择车辆车组");
+        return;
+      }
+
+      const info = {
+        id: VehGroup.value.vehicleId || VehGroup.value.groupId,
+        type: VehGroup.value.flag,
+        pageNumber: pagination.current,
+        pageSize: pagination.pageSize,
+        startTime: rangeDate.value[0],
+        endTime: rangeDate.value[1],
+      };
+      API.exportInsuranceReport(info);
+    };
+    const [debounceOnExpoert] = useDebounce(onExport, 200);
+
+    const pagination = reactive({
+      total: 0,
+      current: 1,
+      pageSize: 100,
+    });
+
+    const currentChange = (val: number) => {
+      pagination.current = val;
+      debounceOnSearch();
+      console.log("current", val);
+    };
+
+    const pageSizeChange = (val: number) => {
+      pagination.pageSize = val;
+      debounceOnSearch();
+      console.log("pageSize", val);
+    };
+
+    return {
+      loading,
+      rangeDate,
+      VehGroup,
+      debounceOnSearch,
+      tableData,
+      tableColumns,
+      debounceOnExpoert,
+      ...toRefs(pagination),
+      currentChange,
+      pageSizeChange,
+    };
+  },
+});
+</script>
+<style lang="less" scoped>
+@import "../../module/css/index.less";
+</style>
